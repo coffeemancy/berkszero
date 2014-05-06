@@ -1,0 +1,41 @@
+#!/usr/bin/env ruby
+
+require "berkszero"
+require "optparse"
+
+
+def green(text)
+  puts "\e[32m#{text}\e[0m"
+end
+
+def red(text)
+  puts "\e[31m#{text}\e[0m"
+end
+
+def up(opts = {})
+  # setup chef-zero
+  BerksZero.with_cz(opts) do |kfile, kconfig, bjson, bconfig|
+    green("Wrote out #{kfile}: ")
+    puts ::File.readlines(kfile)
+    green("Wrote out #{bjson}: ")
+    puts ::File.readlines(bjson)
+  end
+end
+
+def parse_args
+  # Parses command line arguments
+  cli = BerksZero.cli
+  options = BerksZero.default_options
+  ::OptionParser.new do |opts|
+    opts.banner = "Usage: puck VERB [options]"
+    cli.map do |opt, ks|
+      args = ks[:args]
+      args[2] += " (default: #{ks[:default]})" if ks.include?(:default)
+      opts.on(*args) { |a| options[opt] = a }
+    end
+  end.parse!
+  [options, "up"]
+end
+
+opts, verb = parse_args
+send(verb, opts)
