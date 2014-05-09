@@ -3,12 +3,6 @@ source "http://rubygems.org"
 # get BerksZero dependencies
 gemspec
 
-# testing
-group :test do
-  # rake testing
-  gem "rubocop", "~> 0.20"
-end
-
 # development and debugging
 group :development do
   gem "eventmachine", "~> 1.0"

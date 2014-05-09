@@ -1,41 +1,47 @@
 #!/usr/bin/env ruby
+# encoding: UTF-8
 
 require "berkszero"
 require "optparse"
 
-
-def green(text)
-  puts "\e[32m#{text}\e[0m"
+def cyan(text)
+  puts "\e[36m#{text}\e[0m"
 end
 
-def red(text)
-  puts "\e[31m#{text}\e[0m"
-end
-
-def up(opts = {})
+def up(opts = BerksZero.options)
   # setup chef-zero
-  BerksZero.with_cz(opts) do |kfile, kconfig, bjson, bconfig|
-    green("Wrote out #{kfile}: ")
-    puts ::File.readlines(kfile)
-    green("Wrote out #{bjson}: ")
-    puts ::File.readlines(bjson)
-  end
+  kfile, bjson = BerksZero.berkszero(opts)
+  cyan("Wrote out #{kfile}: ")
+  puts ::File.readlines(kfile)
+  cyan("Wrote out #{bjson}: ")
+  puts ::File.readlines(bjson)
+end
+
+# command line arguments
+def cli_args
+  { :host      => { :args    => ["-H", "--host HOST", "Host to bind to"],
+                    :default => BerksZero.ipaddress },
+    :port      => { :args    => ["-p", "--port PORT", "Port to listen on"],
+                    :default => "4000" },
+    :log_level => { :args    => ["-l",
+                                 "--log-level LEVEL",
+                                 "Set the output log level"],
+                    :default => "info" } }
 end
 
 def parse_args
   # Parses command line arguments
-  cli = BerksZero.cli
-  options = BerksZero.default_options
-  ::OptionParser.new do |opts|
-    opts.banner = "Usage: puck VERB [options]"
+  cli = cli_args
+  options = BerksZero.options
+  op = ::OptionParser.new do |opts|
+    opts.banner = "Usage: bzup [options]"
     cli.map do |opt, ks|
       args = ks[:args]
       args[2] += " (default: #{ks[:default]})" if ks.include?(:default)
       opts.on(*args) { |a| options[opt] = a }
     end
   end.parse!
-  [options, "up"]
+  options.merge(op)
 end
 
-opts, verb = parse_args
-send(verb, opts)
+up(parse_args)

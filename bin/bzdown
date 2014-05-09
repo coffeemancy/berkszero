@@ -1,60 +1,31 @@
 #!/usr/bin/env ruby
+# encoding: UTF-8
 
-require "berkszero"
-require "optparse"
-
-
-def green(text)
-  puts "\e[32m#{text}\e[0m"
-end
-
-def red(text)
-  puts "\e[31m#{text}\e[0m"
-end
-
-def down(opts = {})
-  # FIXME: OH DEAR GOD THIS IS GROSS MAKE IT RUBY
-  cmd = <<-EOF
+def down
   # kill chef-zero processes
-  cz="chef-zero"
-  procs=$(ps aux | egrep "$cz" | grep -v grep | awk '{print $2}')
-  if [ "$procs" ]; then
-      printf "\e[31mKilling all /$cz/\e[00m\n"
-      for proc in $procs; do
-          printf "  \e[31mKilling $proc\e[00m\n"
-          kill -9 $proc
-      done
-  else
-      printf "\e[33mNo processes found matching /$cz/\e[00m\n"
-  fi
-  EOF
+  # FIXME: OH DEAR GOD THIS IS GROSS MAKE IT RUBY!?
+  cz = "chef-zero"
+  cmd = <<-EOF
+    procs=$(ps aux | egrep "#{cz}" | grep -v grep | awk '{print $2}')
+    if [ "$procs" ]; then
+        printf "\e[31mKilling all /#{cz}/\e[00m\n"
+        for proc in $procs; do
+            printf "  \e[31mKilling $proc\e[00m\n"
+            kill -9 $proc
+        done
+    else
+        printf "\e[33mNo processes found matching /#{cz}/\e[00m\n"
+    fi
+    EOF
   ::Kernel.system(cmd)
 
   # cleans up berks stuff, remove knife.rb and berkshelf config
-  %w{ cookbooks default tmp }.map do |d|
-    "#{ENV["HOME"]}/.berkshelf/#{d}/*"
-  end.each do |dir|
-    ::Kernel.system("rm -rf #{dir}")
-  end
-  %w{ Berksfile.*lock .chef/knife.rb .berkshelf/config.json }.each do |f|
-    ::Kernel.system("rm -f #{f}")
-  end
+  # FIXME: what if knife_file or berks_json is not default?
+  %w{ cookbooks default tmp }.
+    map  { |dir| "#{ENV["HOME"]}/.berkshelf/#{dir}/*" }.
+    each { |dir| ::Kernel.system("rm -rf #{dir}") }
+  %w{ Berksfile.*lock .chef/knife.rb .berkshelf/config.json }.
+    each { |f| ::Kernel.system("rm -f #{f}") }
 end
 
-def parse_args
-  # Parses command line arguments
-  cli = BerksZero.cli
-  options = BerksZero.default_options
-  ::OptionParser.new do |opts|
-    opts.banner = "Usage: puck VERB [options]"
-    cli.map do |opt, ks|
-      args = ks[:args]
-      args[2] += " (default: #{ks[:default]})" if ks.include?(:default)
-      opts.on(*args) { |a| options[opt] = a }
-    end
-  end.parse!
-  [options, "down"]
-end
-
-opts, verb = parse_args
-send(verb, opts)
+down
