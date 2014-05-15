@@ -6,11 +6,12 @@ require "optparse"
 
 def up(opts)
   # setup chef-zero
-  kfile, bjson = BerksZero.berkszero(opts)
-  puts "\e[36mWrote out #{kfile}: \e[0m"
-  puts ::File.readlines(kfile)
-  puts "\e[36mWrote out #{bjson}: \e[0m"
-  puts ::File.readlines(bjson)
+  BerksZero.berkszero(opts) do |kfile, bjson|
+    puts "\e[36mWrote out #{kfile}: \e[0m"
+    puts ::File.readlines(kfile)
+    puts "\e[36mWrote out #{bjson}: \e[0m"
+    puts ::File.readlines(bjson)
+  end
 end
 
 ## Default command line arguments

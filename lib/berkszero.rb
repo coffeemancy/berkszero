@@ -72,7 +72,14 @@ module BerksZero
     path       = opts.fetch(:path, Dir.pwd)
     berks_file = opts.fetch(:berks_file,
                             ::File.join(path, Berkshelf::DEFAULT_FILENAME))
-    berks_json = opts.fetch(:berks_json, Berkshelf::Config.local_location)
+    # use `local_location` for berks3, default to current dir for berks2
+    method = :local_location
+    berks_json = opts.fetch(:berks_json,
+                            if Berkshelf::Config.method_defined?(method)
+                              Berkshelf::Config.send(method)
+                            else
+                              ::File.join(path, ".berkshelf/config.json")
+                            end)
     berks_dir  = opts.fetch(:berks_dir, ::File.dirname(berks_json))
     chef_dir   = opts.fetch(:chef_dir, ::File.join(path, ".chef"))
     knife_file = opts.fetch(:knife_file, ::File.join(chef_dir, "knife.rb"))
@@ -146,7 +153,7 @@ EOF
   end
 
   # writes knife.rb file
-  def write_knife_rb(opts)
+  def write_knife_rb(opts, &block)
     begin
       knife_file = opts[:knife_file]
       cfg        = knife_config(opts)
@@ -171,12 +178,13 @@ EOF
       red(e.message)
       red("Could not write to file #{knife_file}!")
       raise e
+    else
+      yield knife_file
     end
-    knife_file
   end
 
   # writes berkshelf configuration file
-  def write_berks_json(opts)
+  def write_berks_json(opts, &block)
     begin
       berks_json = opts[:berks_json]
       cfg        = config(opts, true)
@@ -192,26 +200,32 @@ EOF
       red(e.message)
       red("Could not write to file #{berks_json}!")
       raise e
+    else
+      yield berks_json
     end
-    berks_json
   end
 
   # starts chef-zero instance if not currently running
   # FIXME: use ChefZero library instead of popen3
-  def start_cz(args)
-    Open3.popen3("chef-zero #{args}") do |_stdin, _stdout, stderr, wait_thr|
+  def start_cz(args, &block)
+    ::Open3.popen3("chef-zero #{args}") do |_stdin, _stdout, stderr, wait_thr|
       errs = stderr.readlines
       if errs.find { |ln| ln =~ /EADDRINUSE/ }.nil?
         green("Chef-zero started on pid: #{wait_thr.pid}")
       else
         red("Chef-zero is already running, not starting a new daemon...")
       end
+      yield
     end
   end
 
   # uploads cookbooks using berks
   def upload_cookbooks(opts)
-    berks_options = { :berksfile         => nil,
+    cfg = config(opts, true)
+    # set up options to support both berks3 and berks2 (ridley)
+    berks_options = { :berksfile         => opts.fetch(:berks_file, nil),
+                      :client_key        => cfg[:chef][:client_key],
+                      :client_name       => cfg[:chef][:node_name],
                       :config            => opts.fetch(:berks_json, nil),
                       :debug             => false,
                       :force             => false,
@@ -220,12 +234,19 @@ EOF
                       :halt_on_frozen    => false,
                       :no_freeze         => false,
                       :quiet             => false,
+                      :server_url        => cfg[:chef][:chef_server_url],
                       :skip_syntax_check => false,
-                      :ssl_verify        => false,
+                      :ssl_verify        => cfg[:ssl][:verify],
                       :validate          => true }
     begin
-      berksfile = Berkshelf::Berksfile.from_options(berks_options)
-      berksfile.upload([], berks_options)
+      # use `from_file` for berks2 support, otherwise `from_options`
+      method, args = if Berkshelf::Berksfile.method_defined?(:from_options)
+                       [:from_options, berks_options]
+                     else
+                       [:from_file, berks_options[:berksfile]]
+                     end
+      berksfile = Berkshelf::Berksfile.send(method, args)
+      berksfile.upload(berks_options)
     rescue Berkshelf::BerksfileNotFound => e
       red("No Berksfile in current directory!")
       raise e
@@ -233,30 +254,21 @@ EOF
       red(e.message)
       red("Failed to upload cookbooks to chef-zero server!")
       raise e
+    else
+      green("Uploaded cookbooks to chef-zero server")
     end
-    green("Uploaded cookbooks to chef-zero server")
-
-    # Open3.popen3("berks upload #{args}") do |stdin, stdout, stderr, wait_thr|
-    #   stdout.each do |ln|
-    #     puts ln # if ln =~ /Uploading/
-    #   end
-    #   errs = stderr.readlines
-    #   if errs.empty?
-    #     green("Uploaded cookbooks to chef-zero server")
-    #   else
-    #     red(errs)
-    #   end
-    # end
   end
 
-  def berkszero(opts)
-    knife_file = write_knife_rb(opts)
-    berks_json = write_berks_json(opts)
-    m = { :host => "-H", :port => "-p", :log_level => "-l" }
-    args = m.reduce("") { |a, e| a + "#{e[1]} #{opts[e[0]]} " } + "-d"
-    start_cz(args)
-    upload_cookbooks(opts)
-    # upload_cookbooks("-c #{berks_json}")
-    [knife_file, berks_json]
+  def berkszero(opts, &block)
+    write_knife_rb(opts) do |knife_file|
+      write_berks_json(opts) do |berks_json|
+        yield [knife_file, berks_json]
+        m = { :host => "-H", :port => "-p", :log_level => "-l" }
+        args = m.reduce("") { |a, e| a + "#{e[1]} #{opts[e[0]]} " } + "-d"
+        start_cz(args) do
+          upload_cookbooks(opts)
+        end
+      end
+    end
   end
 end

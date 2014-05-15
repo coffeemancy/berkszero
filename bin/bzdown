@@ -18,7 +18,7 @@ end
 ## Deletes files/dirs created by BerksZero
 #
 def cleanup_bz(opts)
-  [:berks_dir, :berks_file, :berks_json, :chef_dir, :knife_file].
+  [:berks_dir, :berks_json, :chef_dir, :knife_file].
     map { |k| opts[k] }.
     push(%w{ cookbooks default tmp }.
            map { |d| ::File.join(opts[:berks_dir], d) }).
