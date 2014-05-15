@@ -1,33 +1,50 @@
 #!/usr/bin/env ruby
 # encoding: UTF-8
 
+require "berkszero"
 require "fileutils"
 require "open3"
 
-def down
-  # kill chef-zero processes
+## Returns all process PIDs matching process_name
+#
+def find_pids(process_name)
   ::Open3.popen3("ps aux") do |_stdin, stdout, _stderr, _wait_thr|
-    pids = stdout.readlines.
-      reject { |ln| %r{chef-zero}.match(ln).nil? }.
+    stdout.readlines.
+      reject { |ln| %r{#{process_name}}.match(ln).nil? }.
       map    { |ln| ln.split(" ")[1].to_i }
-    if pids.empty?
-      puts "\e[33mNo processes found matching /chef-zero/\e[00m"
-    else
-      puts "\e[31mKilling all /chef-zero/\e[00m"
-      pids.each do |pid|
-        puts "  \e[31mKilling #{pid}\e[00m"
-        ::Process.kill("HUP", pid)
-      end
-    end
   end
+end
 
-  # cleans up berks stuff, remove knife.rb and berkshelf config
-  # FIXME: what if knife_file or berks_json is not default?
-  %w{ cookbooks default tmp }.
-    map { |dir| ::File.join(ENV["HOME"], ".berkshelf/#{dir}") }.
-    push(%w{ Berksfile.lock .chef/knife.rb .berkshelf/config.json }).
+## Deletes files/dirs created by BerksZero
+#
+def cleanup_bz(opts)
+  [:berks_dir, :berks_file, :berks_json, :chef_dir, :knife_file].
+    map { |k| opts[k] }.
+    push(%w{ cookbooks default tmp }.
+           map { |d| ::File.join(opts[:berks_dir], d) }).
+    push("#{opts[:berks_file]}.lock").
     flatten.
     each { |f| ::FileUtils.rm_rf f }
 end
 
-down
+## Kills chef-zero and cleans up BerksZero stuff
+#
+def down(opts)
+  pids = find_pids("chef-zero")
+
+  # kill all chef-zero PIDs if any found
+  if pids.empty?
+    puts "\e[33mNo processes found matching /chef-zero/\e[00m"
+  else
+    puts "\e[31mKilling all /chef-zero/\e[00m"
+    pids.each do |pid|
+      puts "  \e[31mKilling #{pid}\e[00m"
+      ::Process.kill("HUP", pid)
+    end
+  end
+
+  cleanup_bz(opts)
+end
+
+# FIXME: how to use actual, instead of default config?
+down(BerksZero.options)

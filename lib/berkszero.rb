@@ -70,16 +70,19 @@ module BerksZero
   def options(opts = {})
     # set up paths relative to optional `path` argument
     path       = opts.fetch(:path, Dir.pwd)
+    berks_file = opts.fetch(:berks_file,
+                            ::File.join(path, Berkshelf::DEFAULT_FILENAME))
+    berks_json = opts.fetch(:berks_json, Berkshelf::Config.local_location)
+    berks_dir  = opts.fetch(:berks_dir, ::File.dirname(berks_json))
     chef_dir   = opts.fetch(:chef_dir, ::File.join(path, ".chef"))
-    berks_dir  = opts.fetch(:berks_dir, ::File.join(path, ".berkshelf"))
     knife_file = opts.fetch(:knife_file, ::File.join(chef_dir, "knife.rb"))
-    berks_json = opts.fetch(:berks_json, ::File.join(berks_dir, "config.json"))
 
     # compose and return options Hash with paths to files and other configs
-    opts.merge(:chef_dir   => chef_dir,
-               :berks_dir  => berks_dir,
-               :knife_file => knife_file,
+    opts.merge(:berks_dir  => berks_dir,
+               :berks_file => berks_file,
                :berks_json => berks_json,
+               :chef_dir   => chef_dir,
+               :knife_file => knife_file,
                :host       => opts.fetch(:host, ipaddress),
                :log_level  => opts.fetch(:log_level, "info"),
                :node_name  => opts.fetch(:node_name, ENV["USER"]),
