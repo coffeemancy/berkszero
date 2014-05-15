@@ -4,17 +4,11 @@
 require "berkszero"
 require "optparse"
 
-def cyan(text)
-  puts "\e[36m#{text}\e[0m"
-end
-
 def up(opts = BerksZero.options)
   # setup chef-zero
   kfile, bjson = BerksZero.berkszero(opts)
-  cyan("Wrote out #{kfile}: ")
-  puts ::File.readlines(kfile)
-  cyan("Wrote out #{bjson}: ")
-  puts ::File.readlines(bjson)
+  puts("\e[36mWrote out #{kfile}: \e[0\nm#{::File.readlines(kfile)}")
+  puts("\e[36mWrote out #{bjson}: \e[0m\n#{::File.readlines(bjson)}")
 end
 
 # command line arguments

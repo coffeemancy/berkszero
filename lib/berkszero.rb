@@ -1,7 +1,29 @@
 # encoding: UTF-8
 
+## BerksZero
+#
+# BerksZero is a tool for workflows involving spinning up multiple transient
+# machines (e.g. vagrant, docker) which use a shared, transient Chef server
+# instance (e.g. chef-zero). The intention is to be able to use tools made
+# for interacting with a Chef server (e.g. knife) during local development,
+# as well as for testing features that require a shared Chef server
+# (e.g. search).
+#
+# Berkshelf is used for cookbook dependency management and to upload the
+# cookbooks to the chef-zero instance.
+#
+# For convenience, valid knife.rb (as well as berkshelf configuration files)
+# are rendered locally to allow for seamless integration with knife.
+#
+# Ideally, the ability to use a standalone, shared Chef server would be added
+# to test-kitchen, potentionally using BerksZero or making this gem
+# deprecated.
+#
+
 require "berkszero/version"
 
+### Dependencies
+#
 require "berkshelf"
 require "erubis"
 require "json"
@@ -9,42 +31,51 @@ require "open3"
 require "openssl"
 require "socket"
 
-## Helper functions
+## BerksZero module
 #
-def green(text)
-  puts "\e[32m#{text}\e[0m"
-end
-
-def red(text)
-  puts "\e[31m#{text}\e[0m"
-end
-
-# generates a new pem
-def pem
-  ::OpenSSL::PKey::RSA.new(2048).to_s
-end
-
-## BerksZero
+# A stateless, functional approach is taken, thus, BerksZero is simply a
+# module of methods. Unnecessary encapsulation is not used in this
+# abstraction.
 #
-# Tool to manage chef-zero with berkshelf and create knife files
+# The primary tool of abstraction is the options Hash which is the first
+# argument in many of the method calls, typically `opts`.
+#
 # TODO: use chef-zero and berkshelf libraries instead of shell calls?
 #
 module BerksZero
-  # gets the IP address to run chef-zero on
+  module_function
+
+  def green(text)
+    puts "\e[32m#{text}\e[0m"
+  end
+
+  def red(text)
+    puts "\e[31m#{text}\e[0m"
+  end
+
+  ### Gets the IP address on which to run chef-zero
+  #
   def ipaddress
     ::Socket.ip_address_list.find { |ip| ip.ipv4_private? }.ip_address
   end
 
-  # construct options Hash
+  ### Generates a new pem
+  #
+  def pem
+    ::OpenSSL::PKey::RSA.new(2048).to_s
+  end
+
+  ### Composes an options Hash
+  #
   def options(opts = {})
-    # set up paths
-    path = opts.fetch(:path, Dir.pwd)
-    chef_dir = opts.fetch(:chef_dir, ::File.join(path, ".chef"))
-    berks_dir = opts.fetch(:berks_dir, ::File.join(path, ".berkshelf"))
+    # set up paths relative to optional `path` argument
+    path       = opts.fetch(:path, Dir.pwd)
+    chef_dir   = opts.fetch(:chef_dir, ::File.join(path, ".chef"))
+    berks_dir  = opts.fetch(:berks_dir, ::File.join(path, ".berkshelf"))
     knife_file = opts.fetch(:knife_file, ::File.join(chef_dir, "knife.rb"))
     berks_json = opts.fetch(:berks_json, ::File.join(berks_dir, "config.json"))
 
-    # return hash
+    # compose and return options Hash with paths to files and other configs
     opts.merge(:chef_dir   => chef_dir,
                :berks_dir  => berks_dir,
                :knife_file => knife_file,
@@ -55,37 +86,49 @@ module BerksZero
                :port       => opts.fetch(:port, "4000"))
   end
 
-  # configuration
+  ### Composes a configuration Hash
+  #
+  # This method is used to compose a Hash used for knife.rb (for Chef) or
+  # config.json (for Berkshelf, if `berks` is `true`).
+  #
   def config(opts = options, berks = false)
-    chef_dir = opts[:chef_dir]
+    chef_dir        = opts[:chef_dir]
     chef_server_url = "http://#{opts[:host]}:#{opts[:port]}"
-    validation_key = ::File.join(chef_dir, "validation/dummy-validator.pem")
-    client_key = ::File.join(chef_dir, "keys/dummy.pem")
+    validation_key  = ::File.join(chef_dir, "validation/dummy-validator.pem")
+    client_key      = ::File.join(chef_dir, "keys/dummy.pem")
 
-    # use validation_key_path for berkshelf, otherwise validation_key
+    # use `validation_key_path` for berkshelf, otherwise `validation_key`
     vkey = "validation_key" + (berks ? "_path" : "")
+
+    # compose and return configuration Hash, no SSL for chef-zero
     { :chef => { :chef_server_url        => chef_server_url,
-                 :validation_client_name => "chef-validator",
-                 vkey.to_sym             => validation_key,
                  :client_key             => client_key,
-                 :node_name              => opts[:node_name] },
-      :ssl  => { :verify => true } }
+                 :node_name              => opts[:node_name],
+                 :validation_client_name => "chef-validator",
+                 vkey.to_sym             => validation_key },
+      :ssl  => { :verify                 => false } }
   end
 
-  # knife.rb configuration
+  ### Generates knife.rb configuration Hash
+  #
   def knife_config(opts = options)
     config(opts)[:chef].merge(:log_level    => ":#{opts[:log_level]}",
                               :log_location => "STDOUT",
                               :cache_type   => "BasicFile")
   end
 
-  # ERB to use for generating knife.rb file
-  # this can be monkey-patched to generate a different file
-  def knife_erb
-    ::File.read("knife.rb.erb")
+  ### Returns ERB to use for generating knife.rb file
+  #
+  # This method can be monkey-patched to generate a different file.
+  #
+  def knife_erb(erb_file = "knife.rb.erb")
+    ::File.read(erb_file)
   end
 
-  # generates a valid knife.rb
+  ### Renders valid knife.rb string from ERB
+  #
+  # A String is returned which is later used to write to knife.rb file.
+  #
   def knife_rb(opts = options)
     cfg = config(opts)[:chef]
     ::Erubis::FastEruby.new(knife_erb).result(:cfg => cfg)
@@ -95,11 +138,11 @@ module BerksZero
   def write_knife_rb(opts = options)
     begin
       knife_file = opts[:knife_file]
-      cfg = knife_config(opts)
+      cfg        = knife_config(opts)
 
       # create directory and key directory if they don't exist
       [knife_file, cfg[:client_key], cfg[:validation_key]].
-        map { |file| ::File.dirname(file) }.
+        map  { |file| ::File.dirname(file) }.
         each { |dir| ::FileUtils.mkdir_p(dir) }
 
       # write client/validation PEMs, if don't exist
@@ -125,7 +168,7 @@ module BerksZero
   def write_berks_json(opts = options)
     begin
       berks_json = opts[:berks_json]
-      cfg = config(opts, true)
+      cfg        = config(opts, true)
 
       # create directory if it doesn't exist
       ::FileUtils.mkdir_p(::File.dirname(berks_json))
@@ -157,18 +200,18 @@ module BerksZero
 
   # uploads cookbooks using berks
   def upload_cookbooks(opts = options)
-    berks_options = { :berksfile => nil,
-                      :config => opts.fetch(:berks_json, nil),
-                      :debug => false,
-                      :force => false,
-                      :format => "human",
-                      :freeze => true,
-                      :halt_on_frozen => false,
-                      :no_freeze => false,
-                      :quiet => false,
+    berks_options = { :berksfile         => nil,
+                      :config            => opts.fetch(:berks_json, nil),
+                      :debug             => false,
+                      :force             => false,
+                      :format            => "human",
+                      :freeze            => true,
+                      :halt_on_frozen    => false,
+                      :no_freeze         => false,
+                      :quiet             => false,
                       :skip_syntax_check => false,
-                      :ssl_verify => false,
-                      :validate => true }
+                      :ssl_verify        => false,
+                      :validate          => true }
     begin
       berksfile = Berksfile.from_options(berks_options)
       berksfile.upload([], berks_options)

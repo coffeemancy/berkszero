@@ -1,31 +1,49 @@
 #!/usr/bin/env ruby
 # encoding: UTF-8
 
+require "berkszero"
+require "fileutils"
+require "open"
+require "process"
+
 def down
   # kill chef-zero processes
   # FIXME: OH DEAR GOD THIS IS GROSS MAKE IT RUBY!?
-  cz = "chef-zero"
-  cmd = <<-EOF
-    procs=$(ps aux | egrep "#{cz}" | grep -v grep | awk '{print $2}')
-    if [ "$procs" ]; then
-        printf "\e[31mKilling all /#{cz}/\e[00m\n"
-        for proc in $procs; do
-            printf "  \e[31mKilling $proc\e[00m\n"
-            kill -9 $proc
-        done
+  ::Open.popen3("ps aux") do |_stdin, stdout, _stderr, _wait_thr|
+    pids = stdout.readlines.
+      reject { |ln| %r{chef-zero}.match(ln).nil? }.
+      map    { |ln| ln.split(" ")[1] }
+    if pids.empty?
+      puts "\e[33mNo processes found matching /chef-zero/\e[00m"
     else
-        printf "\e[33mNo processes found matching /#{cz}/\e[00m\n"
-    fi
-    EOF
-  ::Kernel.system(cmd)
+      puts "\e[31mKilling all /chef-zero/\e[00m"
+      pids.each do |pid|
+        puts "  \e[31mKilling #{pid}\e[00m"
+        ::Process.kill("HUP", pid)
+      end
+    end
+  end
+  # cmd = <<-EOF
+  #   procs=$(ps aux | egrep "#{cz}" | grep -v grep | awk '{print $2}')
+  #   if [ "$procs" ]; then
+  #       printf "\e[31mKilling all /#{cz}/\e[00m\n"
+  #       for proc in $procs; do
+  #           printf "  \e[31mKilling $proc\e[00m\n"
+  #           kill -9 $proc
+  #       done
+  #   else
+  #       printf "\e[33mNo processes found matching /#{cz}/\e[00m\n"
+  #   fi
+  #   EOF
+  # ::Kernel.system(cmd)
 
   # cleans up berks stuff, remove knife.rb and berkshelf config
   # FIXME: what if knife_file or berks_json is not default?
   %w{ cookbooks default tmp }.
-    map  { |dir| "#{ENV["HOME"]}/.berkshelf/#{dir}/*" }.
-    each { |dir| ::Kernel.system("rm -rf #{dir}") }
-  %w{ Berksfile.*lock .chef/knife.rb .berkshelf/config.json }.
-    each { |f| ::Kernel.system("rm -f #{f}") }
+    map { |dir| ::File.join(ENV["HOME"], ".berkshelf/#{dir}") }.
+    push(%w{ Berksfile.lock .chef/knife.rb .berkshelf/config.json }).
+    flatten.
+    each { |f| ::FileUtils.rm_rf f }
 end
 
 down
