@@ -4,7 +4,7 @@
 require "berkszero"
 require "optparse"
 
-def up(opts = BerksZero.options)
+def up(opts)
   # setup chef-zero
   kfile, bjson = BerksZero.berkszero(opts)
   puts("\e[36mWrote out #{kfile}: \e[0\nm#{::File.readlines(kfile)}")
@@ -27,7 +27,7 @@ def parse_args
   # Parses command line arguments
   cli = cli_args
   options = BerksZero.options
-  op = ::OptionParser.new do |opts|
+  ::OptionParser.new do |opts|
     opts.banner = "Usage: bzup [options]"
     cli.map do |opt, ks|
       args = ks[:args]
@@ -35,7 +35,7 @@ def parse_args
       opts.on(*args) { |a| options[opt] = a }
     end
   end.parse!
-  options.merge(op)
+  options
 end
 
 up(parse_args)

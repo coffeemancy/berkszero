@@ -91,7 +91,8 @@ module BerksZero
   # This method is used to compose a Hash used for knife.rb (for Chef) or
   # config.json (for Berkshelf, if `berks` is `true`).
   #
-  def config(opts = options, berks = false)
+  def config(opts, berks = false)
+    require 'pry'; binding.pry
     chef_dir        = opts[:chef_dir]
     chef_server_url = "http://#{opts[:host]}:#{opts[:port]}"
     validation_key  = ::File.join(chef_dir, "validation/dummy-validator.pem")
@@ -111,7 +112,7 @@ module BerksZero
 
   ### Generates knife.rb configuration Hash
   #
-  def knife_config(opts = options)
+  def knife_config(opts)
     config(opts)[:chef].merge(:log_level    => ":#{opts[:log_level]}",
                               :log_location => "STDOUT",
                               :cache_type   => "BasicFile")
@@ -121,21 +122,30 @@ module BerksZero
   #
   # This method can be monkey-patched to generate a different file.
   #
-  def knife_erb(erb_file = "knife.rb.erb")
-    ::File.read(erb_file)
+  def knife_erb
+    <<-EOF
+cache_type               "BasicFile"
+chef_server_url          "<%= cfg[:chef_server_url] %>"
+client_key               "<%= cfg[:client_key] %>"
+log_level                :<%= cfg[:log_level] %>
+log_location             STDOUT
+node_name                "<%= cfg[:node_name] %>"
+validation_client_name   "<%= cfg[:validation_client_name] %>"
+validation_key           "<%= cfg[:validaton_key] %>"
+EOF
   end
 
   ### Renders valid knife.rb string from ERB
   #
   # A String is returned which is later used to write to knife.rb file.
   #
-  def knife_rb(opts = options)
+  def knife_rb(opts)
     cfg = config(opts)[:chef]
     ::Erubis::FastEruby.new(knife_erb).result(:cfg => cfg)
   end
 
   # writes knife.rb file
-  def write_knife_rb(opts = options)
+  def write_knife_rb(opts)
     begin
       knife_file = opts[:knife_file]
       cfg        = knife_config(opts)
@@ -165,7 +175,7 @@ module BerksZero
   end
 
   # writes berkshelf configuration file
-  def write_berks_json(opts = options)
+  def write_berks_json(opts)
     begin
       berks_json = opts[:berks_json]
       cfg        = config(opts, true)
@@ -199,7 +209,7 @@ module BerksZero
   end
 
   # uploads cookbooks using berks
-  def upload_cookbooks(opts = options)
+  def upload_cookbooks(opts)
     berks_options = { :berksfile         => nil,
                       :config            => opts.fetch(:berks_json, nil),
                       :debug             => false,
@@ -234,7 +244,7 @@ module BerksZero
     # end
   end
 
-  def berkszero(opts = options)
+  def berkszero(opts)
     knife_file = write_knife_rb(opts)
     berks_json = write_berks_json(opts)
     m = { :host => "-H", :port => "-p", :log_level => "-l" }
