@@ -92,7 +92,6 @@ module BerksZero
   # config.json (for Berkshelf, if `berks` is `true`).
   #
   def config(opts, berks = false)
-    require 'pry'; binding.pry
     chef_dir        = opts[:chef_dir]
     chef_server_url = "http://#{opts[:host]}:#{opts[:port]}"
     validation_key  = ::File.join(chef_dir, "validation/dummy-validator.pem")
@@ -113,7 +112,7 @@ module BerksZero
   ### Generates knife.rb configuration Hash
   #
   def knife_config(opts)
-    config(opts)[:chef].merge(:log_level    => ":#{opts[:log_level]}",
+    config(opts)[:chef].merge(:log_level    => opts[:log_level],
                               :log_location => "STDOUT",
                               :cache_type   => "BasicFile")
   end
@@ -139,8 +138,7 @@ EOF
   #
   # A String is returned which is later used to write to knife.rb file.
   #
-  def knife_rb(opts)
-    cfg = config(opts)[:chef]
+  def knife_rb(cfg)
     ::Erubis::FastEruby.new(knife_erb).result(:cfg => cfg)
   end
 
@@ -223,11 +221,15 @@ EOF
                       :ssl_verify        => false,
                       :validate          => true }
     begin
-      berksfile = Berksfile.from_options(berks_options)
+      berksfile = Berkshelf::Berksfile.from_options(berks_options)
       berksfile.upload([], berks_options)
+    rescue Berkshelf::BerksfileNotFound => e
+      red("No Berksfile in current directory!")
+      raise e
     rescue Exception => e
       red(e.message)
       red("Failed to upload cookbooks to chef-zero server!")
+      raise e
     end
     green("Uploaded cookbooks to chef-zero server")
 
