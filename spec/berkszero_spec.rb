@@ -33,7 +33,7 @@ describe "BerksZero" do
 
     it "should add knife config options to config :chef Hash" do
       knife_cfg = BerksZero.knife_config(opts)
-      { :log_level    => ":debug",
+      { :log_level    => "debug",
         :log_location => "STDOUT" }.
         each { |k, v| expect(knife_cfg[k]).to eq(v) }
     end

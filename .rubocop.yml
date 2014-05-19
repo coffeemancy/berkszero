@@ -16,7 +16,7 @@ PercentLiteralDelimiters:
     '%W': '{}'
     '%x': '{}'
 RegexpLiteral:
-  MaxSlashes: 0
+  Enabled: false
 RescueException:
   Enabled: false
 RescueModifier:
