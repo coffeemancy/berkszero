@@ -1,0 +1,46 @@
+#!/usr/bin/env ruby
+# encoding: UTF-8
+
+require "berkszero"
+require "optparse"
+
+def up(opts)
+  # setup chef-zero
+  BerksZero.berkszero(opts) do |kfile, bjson|
+    puts "\e[36mWrote out #{kfile}: \e[0m"
+    puts ::File.readlines(kfile)
+    puts "\e[36mWrote out #{bjson}: \e[0m"
+    puts ::File.readlines(bjson)
+  end
+end
+
+## Default command line arguments
+#
+def cli_args
+  { :host      => { :args    => ["-H", "--host HOST", "Host to bind to"],
+                    :default => BerksZero.ipaddress },
+    :port      => { :args    => ["-p", "--port PORT", "Port to listen on"],
+                    :default => "4000" },
+    :log_level => { :args    => ["-l",
+                                 "--log-level LEVEL",
+                                 "Set the output log level"],
+                    :default => "info" } }
+end
+
+## Parses command line arguments
+#
+def parse_args
+  cli = cli_args
+  options = BerksZero.options
+  ::OptionParser.new do |opts|
+    opts.banner = "Usage: bzup [options]"
+    cli.map do |opt, ks|
+      args = ks[:args]
+      args[2] += " (default: #{ks[:default]})" if ks.include?(:default)
+      opts.on(*args) { |a| options[opt] = a }
+    end
+  end.parse!
+  options
+end
+
+up(parse_args)

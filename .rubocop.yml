@@ -1,0 +1,25 @@
+DotPosition:
+  EnforcedStyle: trailing
+HashSyntax:
+  EnforcedStyle: hash_rockets
+MethodLength:
+  Max: 30
+PercentLiteralDelimiters:
+  PreferredDelimiters:
+    '%':  '{}'
+    '%i': '{}'
+    '%q': '{}'
+    '%Q': '{}'
+    '%r': '{}'
+    '%s': '{}'
+    '%w': '{}'
+    '%W': '{}'
+    '%x': '{}'
+RegexpLiteral:
+  Enabled: false
+RescueException:
+  Enabled: false
+RescueModifier:
+  Enabled: false
+StringLiterals:
+  EnforcedStyle: double_quotes
