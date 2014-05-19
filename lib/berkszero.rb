@@ -25,6 +25,7 @@ require "berkszero/version"
 ### Dependencies
 #
 require "berkshelf"
+require "chef_zero/server"
 require "erubis"
 require "json"
 require "open3"
@@ -153,11 +154,11 @@ EOF
   end
 
   # writes knife.rb file
-  def write_knife_rb(opts, &block)
-    begin
-      knife_file = opts[:knife_file]
-      cfg        = knife_config(opts)
+  def write_knife_rb(opts)
+    knife_file = opts[:knife_file]
+    cfg        = knife_config(opts)
 
+    begin
       # create directory and key directory if they don't exist
       [knife_file, cfg[:client_key], cfg[:validation_key]].
         map  { |file| ::File.dirname(file) }.
@@ -179,12 +180,12 @@ EOF
       red("Could not write to file #{knife_file}!")
       raise e
     else
-      yield knife_file
+      knife_file
     end
   end
 
   # writes berkshelf configuration file
-  def write_berks_json(opts, &block)
+  def write_berks_json(opts)
     begin
       berks_json = opts[:berks_json]
       cfg        = config(opts, true)
@@ -193,30 +194,46 @@ EOF
       ::FileUtils.mkdir_p(::File.dirname(berks_json))
 
       # write pretty json to file for berkshelf configuration
-      ::File.open(berks_json, "w") do |f|
-        f.puts ::JSON.pretty_generate(cfg)
-      end
+      ::File.open(berks_json, "w") { |f| f.puts ::JSON.pretty_generate(cfg) }
     rescue Exception => e
       red(e.message)
       red("Could not write to file #{berks_json}!")
       raise e
     else
-      yield berks_json
+      berks_json
     end
   end
 
-  # starts chef-zero instance if not currently running
-  # FIXME: use ChefZero library instead of popen3
-  def start_cz(args, &block)
-    ::Open3.popen3("chef-zero #{args}") do |_stdin, _stdout, stderr, wait_thr|
-      errs = stderr.readlines
-      if errs.find { |ln| ln =~ /EADDRINUSE/ }.nil?
-        green("Chef-zero started on pid: #{wait_thr.pid}")
-      else
-        red("Chef-zero is already running, not starting a new daemon...")
-      end
-      yield
+  ## Starts chef-zero instance
+  #
+  # NOTE: ChefZero/Server library uses `start` method to spin-up instance
+  # in current thread, which is not appropriate here, which is why popen3
+  # is being used
+  #
+  def start_cz(opts, &block)
+    options = { :daemon => true,
+                :log_level => opts[:log_level],
+                :host => opts[:host],
+                :port => opts[:port] }
+    begin
+      server = ChefZero::Server.new(options)
+      pid = server.start_background
+    rescue Exception => e
+      red(e.message)
+      red("Could not start chef-zero daemon!")
+      raise e
+    else
+      yield pid
     end
+    # ::Open3.popen3("chef-zero #{args}") do |_stdin, _stdout, stderr, wait_thr|
+    #   errs = stderr.readlines
+    #   if errs.find { |ln| ln =~ /EADDRINUSE/ }.nil?
+    #     green("Chef-zero started on pid: #{wait_thr.pid}")
+    #   else
+    #     red("Chef-zero is already running, not starting a new daemon...")
+    #   end
+    #   yield
+    # end
   end
 
   # uploads cookbooks using berks
@@ -260,15 +277,14 @@ EOF
   end
 
   def berkszero(opts, &block)
-    write_knife_rb(opts) do |knife_file|
-      write_berks_json(opts) do |berks_json|
-        yield [knife_file, berks_json]
-        m = { :host => "-H", :port => "-p", :log_level => "-l" }
-        args = m.reduce("") { |a, e| a + "#{e[1]} #{opts[e[0]]} " } + "-d"
-        start_cz(args) do
-          upload_cookbooks(opts)
-        end
-      end
+    knife_file = write_knife_rb(opts)
+    berks_json = write_berks_json(opts)
+    yield [knife_file, berks_json]
+    m = { :host => "-H", :port => "-p", :log_level => "-l" }
+    args = m.reduce("") { |a, e| a + "#{e[1]} #{opts[e[0]]} " } + "-d"
+    start_cz(opts) do |pid|
+      green("Chef-zero running on pid: #{pid}")
+      upload_cookbooks(opts)
     end
   end
 end
